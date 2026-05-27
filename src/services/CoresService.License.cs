@@ -65,43 +65,57 @@ public partial class CoresService
             }
         }
 
-        string email = ServiceHelper.SettingsService.Config.patreon_email_address;
-        
-        if (email == null && ServiceHelper.SettingsService.Config.coin_op_beta)
+        if (ServiceHelper.SettingsService.Config.coin_op_beta)
         {
-            Console.WriteLine("Unable to retrieve Coin-Op Collection Beta license. Please set your patreon email address.");
-            Console.Write("Enter value: ");
-            
-            email = Console.ReadLine();
-            
-            ServiceHelper.SettingsService.Config.patreon_email_address = email;
-            ServiceHelper.SettingsService.Save();
-        }
+            string serial = null;
+            var idFiles = Directory.GetFiles(this.installPath, "*.ID");
 
-        if (email != null && ServiceHelper.SettingsService.Config.coin_op_beta)
-        {
-            if (!Directory.Exists(keyPath))
+            if (idFiles.Length > 0)
             {
-                Directory.CreateDirectory(keyPath);
+                serial = Path.GetFileNameWithoutExtension(idFiles[0]);
+            }
+            else
+            {
+                Console.WriteLine("Coin-Op Collection Beta is enabled, but no .ID file was found in the root of your SD card.");
+                Console.WriteLine("To create one, paste your device serial number from the Coin-Op license portal.");
+                Console.Write("Enter serial number (or leave blank to skip): ");
+
+                string input = Console.ReadLine();
+
+                if (!string.IsNullOrWhiteSpace(input))
+                {
+                    serial = input.Trim();
+                    string idFilePath = Path.Combine(this.installPath, serial + ".ID");
+                    File.Create(idFilePath).Dispose();
+                    Console.WriteLine($"Created {serial}.ID");
+                }
             }
 
-            try
+            if (serial != null)
             {
-                Console.WriteLine("Retrieving Coin-Op Collection license...");
-                
-                var license = CoinOpService.FetchLicense(email);
-                
-                File.WriteAllBytes(Path.Combine(keyPath, "coinop.key"), license);
-                
-                Console.WriteLine("License successfully downloaded.");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex.Message);
-            }
-            finally
-            {
-                Divide();
+                if (!Directory.Exists(keyPath))
+                {
+                    Directory.CreateDirectory(keyPath);
+                }
+
+                try
+                {
+                    Console.WriteLine("Retrieving Coin-Op Collection license...");
+
+                    var license = CoinOpService.FetchLicense(serial);
+
+                    File.WriteAllBytes(Path.Combine(keyPath, "coinop.key"), license);
+
+                    Console.WriteLine("License successfully downloaded.");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error retrieving Coin-Op Collection license: {ex.Message}");
+                }
+                finally
+                {
+                    Divide();
+                }
             }
         }
     }

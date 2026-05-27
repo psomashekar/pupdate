@@ -5,13 +5,13 @@ namespace Pannella.Services;
 
 public static class CoinOpService
 {
-    private const string LICENSE_ENDPOINT = "https://key.coinopcollection.org/?username={0}";
+    private const string LICENSE_ENDPOINT = "https://lic.coinopcollection.org/api/public/key/{0}";
 
-    public static byte[] FetchLicense(string email)
+    public static byte[] FetchLicense(string serial)
     {
         var client = new HttpClient();
 
-        string url = string.Format(LICENSE_ENDPOINT, System.Web.HttpUtility.UrlEncode(email));
+        string url = string.Format(LICENSE_ENDPOINT, serial);
         var request = new HttpRequestMessage
         {
             Method = HttpMethod.Get,
@@ -29,10 +29,10 @@ public static class CoinOpService
             var responseBody = response.Content.ReadAsStringAsync().Result;
             throw new Exception(responseBody);
         }
-        
+
         if (response.StatusCode != HttpStatusCode.OK)
         {
-            throw new Exception("Didn't work");
+            throw new Exception("Error fetching Coin-Op Collection license.");
         }
 
         var bytes = response.Content.ReadAsByteArrayAsync().Result;
