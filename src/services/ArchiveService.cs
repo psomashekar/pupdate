@@ -11,9 +11,9 @@ namespace Pannella.Services;
 
 public class ArchiveService : Base
 {
-    private const string METADATA = "https://archive.org/metadata/{0}";
-    private const string DOWNLOAD = "https://archive.org/download/{0}/{1}";
-    private const string LOGIN = "https://archive.org/services/account/login/";
+    internal static string METADATA = "https://archive.org/metadata/{0}";
+    internal static string DOWNLOAD = "https://archive.org/download/{0}/{1}";
+    internal static string LOGIN = "https://archive.org/services/account/login/";
 
     private readonly bool crcCheck;
     private readonly Dictionary<string, Archive> archiveFiles;
@@ -60,6 +60,52 @@ public class ArchiveService : Base
         var files = this.GetArchiveFiles(coreIdentifier);
 
         return files.FirstOrDefault(x => x.name == fileName);
+    }
+
+    // Resolves an asset against the archive index by trying each candidate name in order; the first one that
+    // matches a file in the archive wins. Use BuildAssetCandidates to produce the priority-ordered list.
+    public ArchiveFile GetArchiveFile(IEnumerable<string> candidateNames, string coreIdentifier = null)
+    {
+        var files = this.GetArchiveFiles(coreIdentifier).ToList();
+
+        foreach (string candidate in candidateNames)
+        {
+            var match = files.FirstOrDefault(x => x.name == candidate);
+
+            if (match != null)
+                return match;
+        }
+
+        return null;
+    }
+
+    // Builds archive-index lookup candidates in priority order
+    //   [platform]/[subdirectory(s)]/[asset], [subdirectory(s)]/[asset], [platform]/[asset], [asset]
+    public static IEnumerable<string> BuildAssetCandidates(string relativeName, string platform)
+    {
+        string normalized = (relativeName ?? string.Empty).Replace('\\', '/').TrimStart('/');
+        int slash = normalized.LastIndexOf('/');
+        string subDirectory = slash >= 0 ? normalized.Substring(0, slash) : string.Empty;
+        string asset = slash >= 0 ? normalized.Substring(slash + 1) : normalized;
+
+        platform = platform?.Replace('\\', '/').Trim('/');
+
+        var candidates = new List<string>();
+
+        if (!string.IsNullOrEmpty(subDirectory))
+        {
+            if (!string.IsNullOrEmpty(platform))
+                candidates.Add($"{platform}/{subDirectory}/{asset}");
+
+            candidates.Add($"{subDirectory}/{asset}");
+        }
+
+        if (!string.IsNullOrEmpty(platform))
+            candidates.Add($"{platform}/{asset}");
+
+        candidates.Add(asset);
+
+        return candidates;
     }
 
     // ReSharper disable once MemberCanBePrivate.Global
@@ -140,7 +186,8 @@ public class ArchiveService : Base
         }
     }
 
-    public bool DownloadArchiveFile(SettingsArchive archive, ArchiveFile archiveFile, string destination)
+    public bool DownloadArchiveFile(SettingsArchive archive, ArchiveFile archiveFile, string destination,
+        string destinationFileNameOverride = null)
     {
         if (archive == null || archiveFile == null)
             return false;
@@ -160,14 +207,29 @@ public class ArchiveService : Base
             }
 
             int count = 0;
-            string destinationFileName = Path.Combine(destination, archiveFile.name);
-            string subDirectory = Path.GetDirectoryName(archiveFile.name);
+            // The archive source path (archiveFile.name) can differ from the on-device path; when an override
+            // is supplied (e.g. an instance json slot in a subdirectory) it is authoritative for placement.
+            string destinationFileName = destinationFileNameOverride ?? Path.Combine(destination, archiveFile.name);
 
-            if (!string.IsNullOrEmpty(subDirectory))
+            if (destinationFileNameOverride != null)
             {
-                string destinationDirectory = Path.Combine(destination, subDirectory);
+                string destinationDirectory = Path.GetDirectoryName(destinationFileNameOverride);
 
-                Directory.CreateDirectory(Path.Combine(destinationDirectory));
+                if (!string.IsNullOrEmpty(destinationDirectory))
+                {
+                    Directory.CreateDirectory(destinationDirectory);
+                }
+            }
+            else
+            {
+                string subDirectory = Path.GetDirectoryName(archiveFile.name);
+
+                if (!string.IsNullOrEmpty(subDirectory))
+                {
+                    string destinationDirectory = Path.Combine(destination, subDirectory);
+
+                    Directory.CreateDirectory(Path.Combine(destinationDirectory));
+                }
             }
 
             // Cache hit check

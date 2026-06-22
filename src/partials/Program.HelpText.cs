@@ -18,6 +18,8 @@ Usage:
     -p, --path                Absolute path to install location
     -c, --core                The core you want to update. Runs for all otherwise
     -r, --clean               Clean install. Remove all existing core files, and force a fresh re-install
+    -u, --updated-assets-only Only check/download assets for cores that are updated during this run
+    -y, --yes                 Non-interactive: assume defaults for all prompts (for CI/cron). Exits non-zero on failure
   
   uninstall                Delete a core
     -p, --path                Absolute path to install location
@@ -74,6 +76,17 @@ Usage:
   clear-archive-cache      Delete cached archive downloads (requires cache archive files enabled in settings)
     -p, --path                Absolute path to install location
     -y, --yes                 Confirm clearing (required)
+
+  validate-cores           Check installed cores for missing or invalid JSON files
+    -p, --path                Absolute path to install location
+    -f, --fix                 Reinstall (clean) any cores with missing or invalid JSON
+
+  platforms                Archive or unarchive Pocket platform files
+    -p, --path                Absolute path to install location
+    -l, --list                List platforms and their archive status
+    -a, --archive             Comma-separated platform ids to archive
+    -u, --unarchive           Comma-separated platform ids to unarchive
+        --archive-unused      Archive all platforms with no installed core
 
   update-self              Check for updates to pupdate
 

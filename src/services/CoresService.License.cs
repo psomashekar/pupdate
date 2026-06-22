@@ -51,8 +51,6 @@ public partial class CoresService
 
     public void RetrieveKeys()
     {
-        string keyPath = Path.Combine(this.installPath, LICENSE_EXTRACT_LOCATION);
-
         bool foundLocalJtBeta = this.ExtractJTBetaKey();
 
         if (!foundLocalJtBeta)

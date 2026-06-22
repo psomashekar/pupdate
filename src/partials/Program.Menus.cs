@@ -34,8 +34,7 @@ internal static partial class Program
             EnableAlphabet = true,
             WriteHeaderAction = () =>
             {
-                WriteRainbow(welcome);
-                Console.ResetColor();
+                Console.WriteLine(welcome);
                 Console.WriteLine(sponsorLinks);
                 Console.WriteLine(rateLimitMessage);
                 Console.WriteLine();
@@ -325,8 +324,10 @@ internal static partial class Program
                 }
                 else
                 {
-                    Console.WriteLine("RESULT: Cookie works, but this account is NOT currently a Jotego patron.");
-                    Console.WriteLine("Auto-fetch will still attempt to find jtbeta.zip but will fail on the tier-gate check.");
+                    Console.WriteLine("RESULT: Cookie works, but the /api/current_user response did not include an active Jotego membership.");
+                    Console.WriteLine("This can happen for grandfathered/legacy tiers where Patreon's API shape differs.");
+                    Console.WriteLine("Auto-fetch is decided per-post (current_user_can_view), so it may still succeed — try it.");
+                    Console.WriteLine("If it fails, please share the diagnostic lines above.");
                 }
 
                 Pause();
@@ -572,6 +573,10 @@ internal static partial class Program
             {
                 PinCoreVersionMenu();
             })
+            .Add("Archive/Unarchive Platforms", () =>
+            {
+                ArchivePlatformsMenu();
+            })
             .Add("Go Back", ConsoleMenu.Close);
 
         #endregion
@@ -586,6 +591,7 @@ internal static partial class Program
             .Add("Additional Assets     >", additionalAssetsMenu.Show)
             .Add("Combination Platforms >", combinationPlatformsMenu.Show)
             .Add("Variant Cores         >", variantCoresMenu.Show)
+            .Add("Plugins               >", DisplayPluginsMenu)
             .Add("Go Back", ConsoleMenu.Close);
 
         foreach (var pocketExtra in ServiceHelper.CoresService.PocketExtrasList)
@@ -658,8 +664,12 @@ internal static partial class Program
             {
                 AskAboutNewCores(true);
                 RunCoreSelector(ServiceHelper.CoresService.Cores);
-                // Is reloading the settings file necessary?
+                // Reload settings AND re-point the core updater at the reloaded
+                // SettingsService. Without the second call the updater keeps a stale
+                // settings instance, so newly (de)selected cores aren't picked up by
+                // "Update All" until pupdate is restarted. See issue #299.
                 ServiceHelper.ReloadSettings();
+                coreUpdaterService.ReloadSettings();
             })
             .Add("Download Assets", _ =>
             {
@@ -702,33 +712,6 @@ internal static partial class Program
         string value = Console.ReadLine();
 
         return value;
-    }
-
-    private static void WriteRainbow(string text)
-    {
-        ConsoleColor[] colors =
-        {
-            ConsoleColor.Red,
-            ConsoleColor.Yellow,
-            ConsoleColor.Green,
-            ConsoleColor.Cyan,
-            ConsoleColor.Blue,
-            ConsoleColor.Magenta,
-        };
-        int colorIndex = 0;
-
-        foreach (char c in text)
-        {
-            if (!char.IsWhiteSpace(c))
-            {
-                Console.ForegroundColor = colors[colorIndex % colors.Length];
-                colorIndex++;
-            }
-
-            Console.Write(c);
-        }
-
-        Console.WriteLine();
     }
 
     private static string MenuItemName(string title, bool value, bool requiresLicense = false)
@@ -985,6 +968,103 @@ internal static partial class Program
                 {
                     offset += pageSize;
                     thisMenu.CloseMenu();
+                });
+            }
+
+            if (offset != 0)
+            {
+                menu.Add("Prev Page", thisMenu =>
+                {
+                    offset -= pageSize;
+                    thisMenu.CloseMenu();
+                });
+            }
+
+            menu.Add("Go Back", thisMenu =>
+            {
+                more = false;
+                thisMenu.CloseMenu();
+            });
+
+            menu.Show();
+        }
+    }
+
+    private static void ArchivePlatformsMenu()
+    {
+        const int pageSize = 12;
+        var offset = 0;
+        bool more = true;
+
+        while (more)
+        {
+            var platforms = ServiceHelper.CoresService.GetPlatforms();
+            var activeCount = platforms.Count(p => !p.Archived);
+            var unusedCount = platforms.Count(p => !p.Archived && !p.HasInstalledCore);
+
+            if (offset >= platforms.Count)
+            {
+                offset = 0;
+            }
+
+            var menu = new ConsoleMenu()
+                .Configure(config =>
+                {
+                    config.Selector = "=>";
+                    config.EnableWriteTitle = false;
+                    config.WriteHeaderAction = () => Console.WriteLine(
+                        $"Active platforms: {activeCount} / {Services.CoresService.PLATFORM_LIMIT}\n" +
+                        "Select a platform to archive/unarchive:");
+                    config.SelectedItemBackgroundColor = Console.ForegroundColor;
+                    config.SelectedItemForegroundColor = Console.BackgroundColor;
+                    config.WriteItemAction = item => Console.Write("{0}", item.Name);
+                });
+
+            if (unusedCount > 0)
+            {
+                menu.Add($"Archive unused platforms ({unusedCount})", thisMenu =>
+                {
+                    thisMenu.CloseMenu();
+                    int archived = ServiceHelper.CoresService.ArchiveUnusedPlatforms();
+                    Console.WriteLine($"Archived {archived} unused platform(s).");
+                    Pause();
+                });
+            }
+
+            if (offset + pageSize < platforms.Count)
+            {
+                menu.Add("Next Page", thisMenu =>
+                {
+                    offset += pageSize;
+                    thisMenu.CloseMenu();
+                });
+            }
+
+            var current = -1;
+
+            foreach (var platform in platforms)
+            {
+                current++;
+
+                if (current < offset || current >= offset + pageSize)
+                    continue;
+
+                var captured = platform;
+                string label = $"{captured.Id} - {captured.Name}";
+
+                if (captured.Archived)
+                    label += " [archived]";
+                else if (!captured.HasInstalledCore)
+                    label += " [unused]";
+
+                menu.Add(label, thisMenu =>
+                {
+                    thisMenu.CloseMenu();
+
+                    if (captured.Archived)
+                        ServiceHelper.CoresService.UnarchivePlatform(captured.Id);
+                    else
+                        ServiceHelper.CoresService.ArchivePlatform(captured.Id);
                 });
             }
 

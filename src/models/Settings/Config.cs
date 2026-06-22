@@ -11,6 +11,9 @@ public class Config
     [Description("Download Missing Assets (ROMs and BIOS Files) during 'Update All'")]
     public bool download_assets { get; set; } = true;
 
+    [Description("Only check assets for cores updated during 'Update All'")]
+    public bool only_check_updated_core_assets { get; set; } = false;
+
     public string github_token { get; set; } = string.Empty;
 
     [Description("Download Firmware Updates during 'Update All'")]
@@ -57,9 +60,6 @@ public class Config
     [Description("Automatically install updates to Pupdate")]
     public bool auto_install_updates { get; set; } = false;
 
-    [Description("Coin-Op Collection Beta Access")]
-    public bool coin_op_beta { get; set; } = false;
-
     [Description("Auto-fetch Jotego jtbeta.zip from GitHub (requires github_token + access to jotego/jtbeta)")]
     public bool jt_beta_github_fetch { get; set; } = false;
 
@@ -68,7 +68,7 @@ public class Config
 
     public string temp_directory { get; set; } = null;
 
-    public string patreon_email_address { get; set; } = null;
+    public string plugins_directory { get; set; } = null;
 
     public string patreon_session_cookie { get; set; } = null;
 
@@ -108,6 +108,11 @@ public class Config
 
     [Description("Hide and uninstall Analogizer core variants")]
     public bool no_analogizer_variants { get; set; } = false;
+
+    [Description("Download files in concurrent chunks (faster on bandwidth-limited servers)")]
+    public bool concurrent_downloads { get; set; } = true;
+
+    public int download_chunk_count { get; set; } = 4;
 
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
     public List<Archive> archives { get; set; } = new()

@@ -49,13 +49,19 @@ public class CoreUpdaterService : BaseProcess
     /// <summary>
     /// Run the full openFPGA core download and update process
     /// </summary>
-    public void RunUpdates(string[] ids = null, bool clean = false)
+    /// <returns>The number of cores that failed to update (0 if everything succeeded).</returns>
+    public int RunUpdates(string[] ids = null, bool clean = false, bool onlyUpdatedAssets = false)
     {
         List<Dictionary<string, string>> installed = new List<Dictionary<string, string>>();
         List<string> installedAssets = new List<string>();
         List<string> skippedAssets = new List<string>();
         List<string> missingLicenses = new List<string>();
         string firmwareDownloaded = null;
+        int errorCount = 0;
+
+
+        bool skipUnchangedAssets = onlyUpdatedAssets ||
+            this.settingsService.Config.only_check_updated_core_assets;
 
         if (this.settingsService.Config.backup_saves)
         {
@@ -147,13 +153,16 @@ public class CoreUpdaterService : BaseProcess
                         this.coresService.CopyLicense(core);
                     }
 
-                    results = this.coresService.DownloadAssets(core);
-                    installedAssets.AddRange(results["installed"] as List<string>);
-                    skippedAssets.AddRange(results["skipped"] as List<string>);
-
-                    if ((bool)results["missingLicense"])
+                    if (!skipUnchangedAssets)
                     {
-                        missingLicenses.Add(core.id);
+                        results = this.coresService.DownloadAssets(core);
+                        installedAssets.AddRange(results["installed"] as List<string>);
+                        skippedAssets.AddRange(results["skipped"] as List<string>);
+
+                        if ((bool)results["missingLicense"])
+                        {
+                            missingLicenses.Add(core.id);
+                        }
                     }
 
                     JotegoRename(core);
@@ -205,19 +214,21 @@ public class CoreUpdaterService : BaseProcess
                             }
                         }
 
-                        results = this.coresService.DownloadAssets(core);
-
                         if (!coreSettings.pocket_extras)
                         {
                             JotegoRename(core);
                         }
 
-                        installedAssets.AddRange(results["installed"] as List<string>);
-                        skippedAssets.AddRange(results["skipped"] as List<string>);
-
-                        if ((bool)results["missingLicense"])
+                        if (!skipUnchangedAssets)
                         {
-                            missingLicenses.Add(core.id);
+                            results = this.coresService.DownloadAssets(core);
+                            installedAssets.AddRange(results["installed"] as List<string>);
+                            skippedAssets.AddRange(results["skipped"] as List<string>);
+
+                            if ((bool)results["missingLicense"])
+                            {
+                                missingLicenses.Add(core.id);
+                            }
                         }
 
                         WriteMessage("Up to date. Skipping core.");
@@ -318,6 +329,7 @@ public class CoreUpdaterService : BaseProcess
             }
             catch (Exception ex)
             {
+                errorCount++;
                 WriteMessage("Uh oh something went wrong.");
                 WriteMessage(this.settingsService.Debug.show_stack_traces
                     ? ex.ToString()
@@ -336,10 +348,13 @@ public class CoreUpdaterService : BaseProcess
             SkippedAssets = skippedAssets,
             MissingLicenses = missingLicenses,
             FirmwareUpdated = firmwareDownloaded,
+            ErrorCount = errorCount,
             SkipOutro = false
         };
 
         OnUpdateProcessComplete(args);
+
+        return errorCount;
     }
 
     private void JotegoRename(Core core)
@@ -350,7 +365,15 @@ public class CoreUpdaterService : BaseProcess
         {
             core.platform_id = core.id.Split('.')[1];
 
-            string path = Path.Combine(this.installPath, "Platforms", core.platform_id + ".json");
+            // resolve the platform file wherever it lives (Platforms/ or Platforms/_archive/)
+            // so a rename writes back to the same place and an archived platform stays archived
+            string path = this.coresService.GetPlatformFilePath(core.platform_id);
+
+            if (!File.Exists(path))
+            {
+                return;
+            }
+
             string json = File.ReadAllText(path);
             Dictionary<string, Platform> data = JsonConvert.DeserializeObject<Dictionary<string, Platform>>(json);
             Platform platform = data["platform"];
